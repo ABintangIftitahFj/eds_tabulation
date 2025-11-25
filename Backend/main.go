@@ -101,7 +101,12 @@ func main() {
 		api.DELETE("/rooms/:id", controllers.DeleteRoom)
 
 		// STANDINGS (KLASEMEN)
-		api.GET("/standings", controllers.GetStandings)
+		api.GET("/standings", controllers.GetStandings) // Legacy support if needed
+		api.GET("/standings/teams", controllers.GetStandings)
+		api.GET("/standings/speakers", controllers.GetSpeakerStandings)
+
+		// INSTITUTIONS
+		api.GET("/institutions", controllers.GetParticipatingInstitutions)
 
 		// ADJUDICATOR FEEDBACK (USER RATING)
 		api.GET("/adjudicator-feedback/check", func(c *gin.Context) {

@@ -197,14 +197,36 @@ func SubmitBallot(c *gin.Context) {
 
 func GetBallots(c *gin.Context) {
 	matchID := c.Query("match_id")
-	if matchID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "match_id is required"})
-		return
-	}
+	roundID := c.Query("round_id")
 
 	var ballots []models.Ballot
-	if err := models.DB.Preload("Speaker").Where("match_id = ?", matchID).Find(&ballots).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+
+	if matchID != "" {
+		// Query by specific match
+		if err := models.DB.Preload("Speaker").Where("match_id = ?", matchID).Find(&ballots).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	} else if roundID != "" {
+		// Query by round - get all match IDs first
+		var matchIDs []uint
+		if err := models.DB.Table("matches").Where("round_id = ?", roundID).Pluck("id", &matchIDs).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get matches: " + err.Error()})
+			return
+		}
+
+		if len(matchIDs) == 0 {
+			// No matches found, return empty array
+			c.JSON(http.StatusOK, gin.H{"data": []models.Ballot{}})
+			return
+		}
+
+		if err := models.DB.Preload("Speaker").Where("match_id IN ?", matchIDs).Find(&ballots).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "match_id or round_id is required"})
 		return
 	}
 
