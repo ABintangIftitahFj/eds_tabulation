@@ -140,22 +140,27 @@ type Speaker struct {
 
 type Round struct {
 	gorm.Model
-	TournamentID uint    `json:"tournament_id"`
-	Name         string  `json:"name"`   // "Round 1"
-	Motion       string  `json:"motion"` // "THW Ban TikTok"
-	InfoSlide    string  `json:"info_slide"`
-	IsPublished  bool    `json:"is_published"`
-	Matches      []Match `json:"matches"`
+	TournamentID      uint    `json:"tournament_id"`
+	Name              string  `json:"name"`   // "Round 1"
+	Motion            string  `json:"motion"` // "THW Ban TikTok"
+	InfoSlide         string  `json:"info_slide"`
+	IsPublished       bool    `json:"is_published"`        // Overall published status
+	IsDrawPublished   bool    `json:"is_draw_published"`   // Draw visible to users
+	IsMotionPublished bool    `json:"is_motion_published"` // Motion visible to users
+	MotionImage       string  `json:"motion_image"`        // Optional image for motion
+	Matches           []Match `json:"matches"`
 }
 
 // Match: Struktur Hybrid (Bisa AP, Bisa BP)
 // Kita pakai teknik "Nullable Foreign Keys"
 type Match struct {
 	gorm.Model
-	RoundID     uint   `json:"round_id"`
-	Room        string `json:"room"`
-	Adjudicator string `json:"adjudicator"`
-	PanelJudges string `json:"panel_judges"`
+	RoundID       uint         `json:"round_id"`
+	RoomID        *uint        `json:"room_id"`
+	Room          *Room        `json:"room" gorm:"references:ID"`
+	AdjudicatorID *uint        `json:"adjudicator_id"`
+	Adjudicator   *Adjudicator `json:"adjudicator" gorm:"references:ID"`
+	PanelJudges   string       `json:"panel_judges"`
 
 	// --- KOLOM ASIAN PARLIAMENTARY (2 Teams) ---
 	GovTeamID *uint  `json:"gov_team_id"`
@@ -196,4 +201,14 @@ type Ballot struct {
 	Position string `json:"position"` // "PM", "LO", "Member", "Whip"
 	IsReply  bool   `json:"is_reply"`
 	TeamRole string `json:"team_role"` // "gov" or "opp"
+}
+
+// AdjudicatorFeedback: Feedback dan Rating dari User untuk Juri
+type AdjudicatorFeedback struct {
+	gorm.Model
+	MatchID       uint    `json:"match_id"`
+	TournamentID  uint    `json:"tournament_id"`
+	AdjudicatorID uint    `json:"adjudicator_id"`
+	Rating        int     `json:"rating" gorm:"check:rating >= 1 AND rating <= 5"` // 1-5 stars
+	Comment       *string `json:"comment"`                                         // Optional comment
 }

@@ -138,7 +138,7 @@ func SubmitBallot(c *gin.Context) {
 
 	// Update Status Match
 	match.IsCompleted = true
-	match.Adjudicator = input.Adjudicator
+	// match.Adjudicator = input.Adjudicator // Removed because Adjudicator is now a relation
 
 	// Logika Penentuan Pemenang
 	// Kalau Gov > Opp -> Gov Menang (WinnerID = GovTeamID)
@@ -193,4 +193,20 @@ func SubmitBallot(c *gin.Context) {
 		"total_gov": totalGov,
 		"total_opp": totalOpp,
 	})
+}
+
+func GetBallots(c *gin.Context) {
+	matchID := c.Query("match_id")
+	if matchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "match_id is required"})
+		return
+	}
+
+	var ballots []models.Ballot
+	if err := models.DB.Preload("Speaker").Where("match_id = ?", matchID).Find(&ballots).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": ballots})
 }

@@ -29,8 +29,12 @@ func main() {
 	})
 
 	// 3. Setup Routing API
+	r.Static("/uploads", "./uploads")
+
 	api := r.Group("/api")
 	{
+		api.POST("/upload", controllers.UploadFile)
+
 		// ==============================
 		// 🔐 AUTHENTICATION
 		// ==============================
@@ -41,9 +45,11 @@ func main() {
 		// 📰 FITUR COMPANY PROFILE
 		// ==============================
 		// Berita (Articles)
-		api.GET("/articles", controllers.GetArticles)            // Public: Lihat semua berita
-		api.GET("/articles/:slug", controllers.GetArticleBySlug) // Public: Baca 1 berita detail
-		api.POST("/articles", controllers.CreateArticle)         // Admin: Tambah berita
+		api.GET("/articles", controllers.GetArticles)                   // Public: Lihat semua berita
+		api.POST("/articles", controllers.CreateArticle)                // Admin: Tambah berita
+		api.GET("/articles/detail/:slug", controllers.GetArticleBySlug) // Public: Baca 1 berita detail
+		api.PUT("/articles/:id", controllers.UpdateArticle)             // Admin: Update berita
+		api.DELETE("/articles/:id", controllers.DeleteArticle)          // Admin: Hapus berita
 
 		// Nanti tambah route Member di sini:
 		// api.GET("/members", controllers.GetMembers)
@@ -69,11 +75,14 @@ func main() {
 
 		// --- INPUT SKOR (TABULATOR) ---
 		api.POST("/ballots", controllers.SubmitBallot)
+		api.GET("/ballots", controllers.GetBallots)
 
 		// RONDE
 		api.GET("/rounds", controllers.GetRounds)
 		api.POST("/rounds", controllers.CreateRound)
 		api.DELETE("/rounds/:id", controllers.DeleteRound)
+		api.PUT("/rounds/:id/publish-draw", controllers.PublishDraw)
+		api.PUT("/rounds/:id/publish-motion", controllers.PublishMotion)
 
 		// MATCHES
 		api.GET("/matches", controllers.GetMatches)
@@ -93,6 +102,23 @@ func main() {
 
 		// STANDINGS (KLASEMEN)
 		api.GET("/standings", controllers.GetStandings)
+
+		// ADJUDICATOR FEEDBACK (USER RATING)
+		api.GET("/adjudicator-feedback/check", func(c *gin.Context) {
+			controllers.CheckFeedbackExists(c, models.DB)
+		})
+		api.GET("/adjudicator-feedback", func(c *gin.Context) {
+			controllers.GetAdjudicatorFeedback(c, models.DB)
+		})
+		api.POST("/adjudicator-feedback", func(c *gin.Context) {
+			controllers.CreateAdjudicatorFeedback(c, models.DB)
+		})
+		api.GET("/adjudicator-feedback/stats/:adjudicator_id", func(c *gin.Context) {
+			controllers.GetFeedbackStats(c, models.DB)
+		})
+		api.DELETE("/adjudicator-feedback/:id", func(c *gin.Context) {
+			controllers.DeleteAdjudicatorFeedback(c, models.DB)
+		})
 	}
 
 	// 4. Jalankan Server

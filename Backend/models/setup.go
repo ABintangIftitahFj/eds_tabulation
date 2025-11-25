@@ -36,6 +36,7 @@ func ConnectDatabase() {
 		&Round{},
 		&Match{},
 		&Ballot{},
+		&AdjudicatorFeedback{}, // <-- Feedback Juri
 		// Motion (opsional jika dipisah)
 	)
 

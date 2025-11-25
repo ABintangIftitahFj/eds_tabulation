@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/star_fj/eds-backend/models"
@@ -117,6 +118,66 @@ func DeleteRound(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Round deleted successfully"})
 }
 
+// Publish/Unpublish Draw
+func PublishDraw(c *gin.Context) {
+	id := c.Param("id")
+	var input struct {
+		IsDrawPublished bool `json:"is_draw_published"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var round models.Round
+	if err := models.DB.First(&round, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Round not found"})
+		return
+	}
+
+	round.IsDrawPublished = input.IsDrawPublished
+	if err := models.DB.Save(&round).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	message := "Draw published to users"
+	if !input.IsDrawPublished {
+		message = "Draw hidden from users"
+	}
+	c.JSON(http.StatusOK, gin.H{"message": message, "data": round})
+}
+
+// Publish/Unpublish Motion
+func PublishMotion(c *gin.Context) {
+	id := c.Param("id")
+	var input struct {
+		IsMotionPublished bool `json:"is_motion_published"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var round models.Round
+	if err := models.DB.First(&round, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Round not found"})
+		return
+	}
+
+	round.IsMotionPublished = input.IsMotionPublished
+	if err := models.DB.Save(&round).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	message := "Motion published to users"
+	if !input.IsMotionPublished {
+		message = "Motion hidden from users"
+	}
+	c.JSON(http.StatusOK, gin.H{"message": message, "data": round})
+}
+
 // 5. LIHAT DAFTAR TURNAMEN (Baru)
 func GetTournaments(c *gin.Context) {
 	var tournaments []models.Tournament
@@ -130,8 +191,22 @@ func GetTeams(c *gin.Context) {
 	var teams []models.Team
 	query := models.DB.Preload("Speakers").Order("created_at desc")
 	if tournamentID != "" {
+		if _, err := strconv.Atoi(tournamentID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+			return
+		}
 		query = query.Where("tournament_id = ?", tournamentID)
 	}
+
+	id := c.Query("id")
+	if id != "" {
+		if _, err := strconv.Atoi(id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+			return
+		}
+		query = query.Where("id = ?", id)
+	}
+
 	if err := query.Find(&teams).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -148,8 +223,22 @@ func GetRounds(c *gin.Context) {
 	var rounds []models.Round
 	query := models.DB.Order("created_at asc")
 	if tournamentID != "" {
+		if _, err := strconv.Atoi(tournamentID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+			return
+		}
 		query = query.Where("tournament_id = ?", tournamentID)
 	}
+
+	id := c.Query("id")
+	if id != "" {
+		if _, err := strconv.Atoi(id); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid id"})
+			return
+		}
+		query = query.Where("id = ?", id)
+	}
+
 	if err := query.Find(&rounds).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -163,11 +252,11 @@ func GetRounds(c *gin.Context) {
 // 9. Buat Match (Pairing: Tim A vs Tim B)
 func CreateMatch(c *gin.Context) {
 	var input struct {
-		RoundID     uint   `json:"round_id"`
-		GovTeamID   uint   `json:"gov_team_id"`
-		OppTeamID   uint   `json:"opp_team_id"`
-		Room        string `json:"room"`
-		Adjudicator string `json:"adjudicator"`
+		RoundID       uint `json:"round_id"`
+		GovTeamID     uint `json:"gov_team_id"`
+		OppTeamID     uint `json:"opp_team_id"`
+		RoomID        uint `json:"room_id"`
+		AdjudicatorID uint `json:"adjudicator_id"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -176,12 +265,12 @@ func CreateMatch(c *gin.Context) {
 	// Debug log
 	fmt.Printf("CreateMatch received: %+v\n", input)
 	match := models.Match{
-		RoundID:     input.RoundID,
-		GovTeamID:   &input.GovTeamID,
-		OppTeamID:   &input.OppTeamID,
-		Room:        input.Room,
-		Adjudicator: input.Adjudicator,
-		IsCompleted: false,
+		RoundID:       input.RoundID,
+		GovTeamID:     &input.GovTeamID,
+		OppTeamID:     &input.OppTeamID,
+		RoomID:        &input.RoomID,
+		AdjudicatorID: &input.AdjudicatorID,
+		IsCompleted:   false,
 	}
 	if err := models.DB.Create(&match).Error; err != nil {
 		println("CreateMatch DB error:", err)
@@ -195,10 +284,24 @@ func CreateMatch(c *gin.Context) {
 func GetMatches(c *gin.Context) {
 	roundID := c.Query("round_id") // Filter per ronde
 	var matches []models.Match
-	query := models.DB.Preload("GovTeam").Preload("OppTeam").Preload("Round").Order("room asc")
+	query := models.DB.Preload("GovTeam").Preload("OppTeam").Preload("Round").Preload("Room").Preload("Adjudicator").Order("id asc")
 	if roundID != "" {
+		if _, err := strconv.Atoi(roundID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid round_id"})
+			return
+		}
 		query = query.Where("round_id = ?", roundID)
 	}
+
+	teamID := c.Query("team_id")
+	if teamID != "" {
+		if _, err := strconv.Atoi(teamID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team_id"})
+			return
+		}
+		query = query.Where("gov_team_id = ? OR opp_team_id = ?", teamID, teamID)
+	}
+
 	if err := query.Find(&matches).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -259,6 +362,10 @@ func GetAdjudicators(c *gin.Context) {
 	var adjudicators []models.Adjudicator
 	query := models.DB.Order("name asc")
 	if tournamentID != "" {
+		if _, err := strconv.Atoi(tournamentID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+			return
+		}
 		query = query.Where("tournament_id = ?", tournamentID)
 	}
 	if err := query.Find(&adjudicators).Error; err != nil {
@@ -290,6 +397,10 @@ func GetRooms(c *gin.Context) {
 	var rooms []models.Room
 	query := models.DB.Order("name asc")
 	if tournamentID != "" {
+		if _, err := strconv.Atoi(tournamentID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+			return
+		}
 		query = query.Where("tournament_id = ?", tournamentID)
 	}
 	if err := query.Find(&rooms).Error; err != nil {
