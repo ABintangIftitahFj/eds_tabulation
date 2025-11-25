@@ -18,7 +18,7 @@ func main() {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -58,10 +58,12 @@ func main() {
 		api.GET("/tournaments", controllers.GetTournaments)
 		api.POST("/tournaments", controllers.CreateTournament)
 		api.PUT("/tournaments/:id", controllers.UpdateTournament)
+		api.DELETE("/tournaments/:id", controllers.DeleteTournament)
 
 		// Tim
 		api.GET("/teams", controllers.GetTeams)    // <--- API untuk melihat daftar tim
 		api.POST("/teams", controllers.CreateTeam) // <--- API untuk mendaftarkan tim baru
+		api.DELETE("/teams/:id", controllers.DeleteTeam)
 
 		// Ronde & Match
 
@@ -71,10 +73,23 @@ func main() {
 		// RONDE
 		api.GET("/rounds", controllers.GetRounds)
 		api.POST("/rounds", controllers.CreateRound)
+		api.DELETE("/rounds/:id", controllers.DeleteRound)
 
 		// MATCHES
 		api.GET("/matches", controllers.GetMatches)
 		api.POST("/matches", controllers.CreateMatch)
+		api.PUT("/matches/:id/result", controllers.UpdateMatchResult)
+		api.DELETE("/matches/:id", controllers.DeleteMatch)
+
+		// ADJUDICATORS
+		api.GET("/adjudicators", controllers.GetAdjudicators)
+		api.POST("/adjudicators", controllers.CreateAdjudicator)
+		api.DELETE("/adjudicators/:id", controllers.DeleteAdjudicator)
+
+		// ROOMS
+		api.GET("/rooms", controllers.GetRooms)
+		api.POST("/rooms", controllers.CreateRoom)
+		api.DELETE("/rooms/:id", controllers.DeleteRoom)
 
 		// STANDINGS (KLASEMEN)
 		api.GET("/standings", controllers.GetStandings)

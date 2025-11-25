@@ -28,7 +28,9 @@ func ConnectDatabase() {
 		&CompetitionHistory{}, // <-- Baru
 		&Achievement{},
 		// Tabulation System
-		&Tournament{}, // <-- Baru
+		&Tournament{},  // <-- Baru
+		&Adjudicator{}, // <-- Juri
+		&Room{},        // <-- Ruangan
 		&Team{},
 		&Speaker{},
 		&Round{},

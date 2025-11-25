@@ -92,6 +92,26 @@ type Tournament struct {
 	IsPublic    bool      `gorm:"default:true" json:"is_public"`
 }
 
+// Adjudicator: Daftar Juri untuk Tournament
+type Adjudicator struct {
+	gorm.Model
+	TournamentID uint   `json:"tournament_id"`
+	Name         string `json:"name"`
+	Institution  string `json:"institution"`
+	Level        string `json:"level"` // "Chief", "Wing", "Panelist"
+	IsAvailable  bool   `gorm:"default:true" json:"is_available"`
+}
+
+// Room: Daftar Ruangan untuk Tournament
+type Room struct {
+	gorm.Model
+	TournamentID uint   `json:"tournament_id"`
+	Name         string `json:"name"` // "A1", "B2", etc
+	Location     string `json:"location"`
+	Capacity     int    `json:"capacity"`
+	IsAvailable  bool   `gorm:"default:true" json:"is_available"`
+}
+
 // Team: Peserta Turnamen
 type Team struct {
 	gorm.Model
@@ -112,6 +132,7 @@ type Team struct {
 type Speaker struct {
 	gorm.Model
 	TeamID      uint    `json:"team_id"`
+	Team        Team    `json:"team" gorm:"references:ID"`
 	Name        string  `json:"name"`
 	TotalScore  float64 `json:"total_score"`
 	SpeakerRank int     `json:"speaker_rank"`
@@ -137,10 +158,11 @@ type Match struct {
 	PanelJudges string `json:"panel_judges"`
 
 	// --- KOLOM ASIAN PARLIAMENTARY (2 Teams) ---
-	GovTeamID *uint `json:"gov_team_id"` // Pake Pointer (*) biar bisa NULL
-	GovTeam   *Team `json:"gov_team"`
-	OppTeamID *uint `json:"opp_team_id"`
-	OppTeam   *Team `json:"opp_team"`
+	GovTeamID *uint  `json:"gov_team_id"`
+	GovTeam   *Team  `json:"gov_team" gorm:"references:ID"`
+	OppTeamID *uint  `json:"opp_team_id"`
+	OppTeam   *Team  `json:"opp_team" gorm:"references:ID"`
+	Round     *Round `json:"round" gorm:"references:ID"`
 	// Hasil AP
 	WinnerID *uint `json:"winner_id"` // Siapa yang menang (Gov/Opp)
 
@@ -167,7 +189,7 @@ type Ballot struct {
 	gorm.Model
 	MatchID   uint    `json:"match_id"`
 	SpeakerID uint    `json:"speaker_id"`
-	Speaker   Speaker `json:"speaker"`
+	Speaker   Speaker `json:"speaker" gorm:"references:ID"`
 	Score     float64 `json:"score"` // AP (68-82), BP (60-80)
 
 	// Identitas Peran (Penting buat BP)

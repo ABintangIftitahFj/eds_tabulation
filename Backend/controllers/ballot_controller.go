@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,14 @@ func SubmitBallot(c *gin.Context) {
 	// Mulai Transaksi Database (Biar Aman)
 	tx := models.DB.Begin()
 
+	// 0. Ambil data match terlebih dahulu untuk mendapat teamID
+	var match models.Match
+	if err := tx.Preload("GovTeam").Preload("OppTeam").First(&match, input.MatchID).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusNotFound, gin.H{"error": "Match tidak ditemukan"})
+		return
+	}
+
 	// 1. Simpan Skor Individu
 	var totalGov float64 = 0
 	var totalOpp float64 = 0
@@ -37,9 +46,80 @@ func SubmitBallot(c *gin.Context) {
 			return
 		}
 
-		// Simpan speaker baru jika belum ada (atau update)
-		// Note: Di sistem real, idealnya speaker dipilih dari ID, tapi ini simplifikasi
-		if err := tx.Create(&ballot).Error; err != nil {
+		// Tentukan TeamID berdasarkan TeamRole dan MatchID
+		var teamID uint
+		if ballot.TeamRole == "gov" {
+			if match.GovTeamID == nil {
+				tx.Rollback()
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Match tidak memiliki Government Team"})
+				return
+			}
+			teamID = *match.GovTeamID
+		} else if ballot.TeamRole == "opp" {
+			if match.OppTeamID == nil {
+				tx.Rollback()
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Match tidak memiliki Opposition Team"})
+				return
+			}
+			teamID = *match.OppTeamID
+		} else {
+			tx.Rollback()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "TeamRole harus 'gov' atau 'opp'"})
+			return
+		}
+
+		// Debug log
+		fmt.Printf("Debug: TeamRole=%s, TeamID=%d, MatchID=%d\n", ballot.TeamRole, teamID, ballot.MatchID)
+
+		// Validasi TeamID tidak boleh 0
+		if teamID == 0 {
+			tx.Rollback()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "TeamID tidak valid (0)"})
+			return
+		}
+
+		// Cari atau buat speaker baru jika belum ada
+		var speaker models.Speaker
+		if ballot.SpeakerID != 0 {
+			// Jika SpeakerID sudah ada, gunakan yang ada
+			if err := tx.First(&speaker, ballot.SpeakerID).Error; err != nil {
+				tx.Rollback()
+				c.JSON(http.StatusNotFound, gin.H{"error": "Speaker tidak ditemukan"})
+				return
+			}
+		} else if ballot.Speaker.Name != "" {
+			// Cari speaker berdasarkan nama dan tim
+			err := tx.Where("name = ? AND team_id = ?", ballot.Speaker.Name, teamID).First(&speaker).Error
+			if err != nil {
+				// Jika tidak ditemukan, buat speaker baru
+				speaker = models.Speaker{
+					Name:   ballot.Speaker.Name,
+					TeamID: teamID,
+				}
+				if err := tx.Create(&speaker).Error; err != nil {
+					tx.Rollback()
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat speaker: " + err.Error()})
+					return
+				}
+			}
+			ballot.SpeakerID = speaker.ID
+		} else {
+			tx.Rollback()
+			c.JSON(http.StatusBadRequest, gin.H{"error": "SpeakerID atau Speaker.Name harus diisi"})
+			return
+		}
+
+		// Simpan ballot dengan SpeakerID yang valid
+		ballotToSave := models.Ballot{
+			MatchID:   ballot.MatchID,
+			SpeakerID: ballot.SpeakerID,
+			Score:     ballot.Score,
+			Position:  ballot.Position,
+			IsReply:   ballot.IsReply,
+			TeamRole:  ballot.TeamRole,
+		}
+
+		if err := tx.Create(&ballotToSave).Error; err != nil {
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal simpan skor: " + err.Error()})
 			return
@@ -54,12 +134,7 @@ func SubmitBallot(c *gin.Context) {
 	}
 
 	// 2. Tentukan Pemenang (Logic Asian Parliamentary)
-	var match models.Match
-	if err := tx.Preload("GovTeam").Preload("OppTeam").First(&match, input.MatchID).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusNotFound, gin.H{"error": "Match tidak ditemukan"})
-		return
-	}
+	// Match sudah diambil di atas, tidak perlu diambil lagi
 
 	// Update Status Match
 	match.IsCompleted = true
