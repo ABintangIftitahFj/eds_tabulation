@@ -217,6 +217,30 @@ func GetTeams(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": teams})
 }
 
+// 6b. LIHAT DAFTAR SPEAKER (Berdasarkan Team ID)
+func GetSpeakers(c *gin.Context) {
+	teamID := c.Query("team_id")
+	var speakers []models.Speaker
+	query := models.DB.Preload("Team").Order("created_at asc")
+
+	if teamID != "" {
+		if _, err := strconv.Atoi(teamID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid team_id"})
+			return
+		}
+		query = query.Where("team_id = ?", teamID)
+	}
+
+	if err := query.Find(&speakers).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if speakers == nil {
+		speakers = []models.Speaker{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": speakers})
+}
+
 // 7. LIHAT DAFTAR RONDE (Berdasarkan Turnamen ID)
 func GetRounds(c *gin.Context) {
 	tournamentID := c.Query("tournament_id")
@@ -247,6 +271,38 @@ func GetRounds(c *gin.Context) {
 		rounds = []models.Round{}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": rounds})
+}
+
+// 7b. UPDATE ROUND STATUS (completed/in_progress)
+func UpdateRoundStatus(c *gin.Context) {
+	roundID := c.Param("id")
+	var input struct {
+		Status string `json:"status"` // "completed" or "in_progress"
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate status
+	if input.Status != "completed" && input.Status != "in_progress" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Status must be 'completed' or 'in_progress'"})
+		return
+	}
+
+	var round models.Round
+	if err := models.DB.First(&round, roundID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Round not found"})
+		return
+	}
+
+	round.Status = input.Status
+	if err := models.DB.Save(&round).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": round, "message": "Round status updated"})
 }
 
 // 9. Buat Match (Pairing: Tim A vs Tim B)
@@ -341,6 +397,54 @@ func UpdateMatchResult(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": match})
+}
+
+// 11b. ASSIGN ADJUDICATOR PANEL TO MATCH
+func AssignAdjudicatorPanel(c *gin.Context) {
+	matchID := c.Param("id")
+	var input struct {
+		ChiefAdjID uint   `json:"chief_adj_id"`
+		WingAdjIDs []uint `json:"wing_adj_ids"`
+		PanelSize  int    `json:"panel_size"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var match models.Match
+	if err := models.DB.First(&match, matchID).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Match not found"})
+		return
+	}
+
+	// Set the chief adjudicator
+	match.AdjudicatorID = &input.ChiefAdjID
+
+	// Store wing adjudicators as comma-separated IDs in PanelJudges
+	if len(input.WingAdjIDs) > 0 {
+		wingIDsStr := ""
+		for i, id := range input.WingAdjIDs {
+			if i > 0 {
+				wingIDsStr += ","
+			}
+			wingIDsStr += fmt.Sprintf("%d", id)
+		}
+		match.PanelJudges = wingIDsStr
+	} else {
+		match.PanelJudges = ""
+	}
+
+	if err := models.DB.Save(&match).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Reload match with adjudicator data
+	models.DB.Preload("Adjudicator").First(&match, matchID)
+
+	c.JSON(http.StatusOK, gin.H{"data": match, "message": "Adjudicator panel assigned successfully"})
 }
 
 // 12. ADJUDICATOR MANAGEMENT
@@ -454,4 +558,222 @@ func DeleteMatch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Match deleted successfully"})
+}
+
+// =====================================================
+// CSV IMPORT FUNCTIONS
+// =====================================================
+
+// CSV Import Teams
+// Format CSV: name,institution,speaker1,speaker2,speaker3
+func ImportTeamsCSV(c *gin.Context) {
+	tournamentID := c.Query("tournament_id")
+	if tournamentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tournament_id is required"})
+		return
+	}
+
+	tid, err := strconv.Atoi(tournamentID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+		return
+	}
+
+	var input struct {
+		Data [][]string `json:"data"` // Array of rows, each row is array of columns
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx := models.DB.Begin()
+	teamsCreated := 0
+	speakersCreated := 0
+
+	for rowIdx, row := range input.Data {
+		// Skip header row if detected
+		if rowIdx == 0 && (row[0] == "name" || row[0] == "Name" || row[0] == "team" || row[0] == "Team") {
+			continue
+		}
+
+		if len(row) < 2 {
+			continue // Skip invalid rows
+		}
+
+		teamName := row[0]
+		institution := row[1]
+
+		if teamName == "" {
+			continue
+		}
+
+		// Create team
+		team := models.Team{
+			TournamentID: uint(tid),
+			Name:         teamName,
+			Institution:  institution,
+		}
+
+		if err := tx.Create(&team).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create team '%s': %s", teamName, err.Error())})
+			return
+		}
+		teamsCreated++
+
+		// Create speakers (columns 3+)
+		for i := 2; i < len(row); i++ {
+			speakerName := row[i]
+			if speakerName == "" {
+				continue
+			}
+
+			speaker := models.Speaker{
+				TeamID: team.ID,
+				Name:   speakerName,
+			}
+
+			if err := tx.Create(&speaker).Error; err != nil {
+				tx.Rollback()
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create speaker '%s': %s", speakerName, err.Error())})
+				return
+			}
+			speakersCreated++
+		}
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{
+		"message":          "CSV imported successfully",
+		"teams_created":    teamsCreated,
+		"speakers_created": speakersCreated,
+	})
+}
+
+// CSV Import Adjudicators
+// Format CSV: name,institution
+func ImportAdjudicatorsCSV(c *gin.Context) {
+	tournamentID := c.Query("tournament_id")
+	if tournamentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tournament_id is required"})
+		return
+	}
+
+	tid, err := strconv.Atoi(tournamentID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+		return
+	}
+
+	var input struct {
+		Data [][]string `json:"data"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx := models.DB.Begin()
+	created := 0
+
+	for rowIdx, row := range input.Data {
+		// Skip header row if detected
+		if rowIdx == 0 && (row[0] == "name" || row[0] == "Name" || row[0] == "adjudicator" || row[0] == "Adjudicator") {
+			continue
+		}
+
+		if len(row) < 1 || row[0] == "" {
+			continue
+		}
+
+		adjName := row[0]
+		institution := ""
+		if len(row) > 1 {
+			institution = row[1]
+		}
+
+		adj := models.Adjudicator{
+			TournamentID: uint(tid),
+			Name:         adjName,
+			Institution:  institution,
+		}
+
+		if err := tx.Create(&adj).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create adjudicator '%s': %s", adjName, err.Error())})
+			return
+		}
+		created++
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{
+		"message":              "CSV imported successfully",
+		"adjudicators_created": created,
+	})
+}
+
+// CSV Import Rooms
+// Format CSV: name,capacity (capacity is optional)
+func ImportRoomsCSV(c *gin.Context) {
+	tournamentID := c.Query("tournament_id")
+	if tournamentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tournament_id is required"})
+		return
+	}
+
+	tid, err := strconv.Atoi(tournamentID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+		return
+	}
+
+	var input struct {
+		Data [][]string `json:"data"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx := models.DB.Begin()
+	created := 0
+
+	for rowIdx, row := range input.Data {
+		// Skip header row if detected
+		if rowIdx == 0 && (row[0] == "name" || row[0] == "Name" || row[0] == "room" || row[0] == "Room") {
+			continue
+		}
+
+		if len(row) < 1 || row[0] == "" {
+			continue
+		}
+
+		roomName := row[0]
+		capacity := 0
+		if len(row) > 1 {
+			cap, _ := strconv.Atoi(row[1])
+			capacity = cap
+		}
+
+		room := models.Room{
+			TournamentID: uint(tid),
+			Name:         roomName,
+			Capacity:     capacity,
+		}
+
+		if err := tx.Create(&room).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create room '%s': %s", roomName, err.Error())})
+			return
+		}
+		created++
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "CSV imported successfully",
+		"rooms_created": created,
+	})
 }

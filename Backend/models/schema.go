@@ -122,20 +122,20 @@ type Team struct {
 	Speakers     []Speaker  `json:"speakers"`
 
 	// Statistik Tabulasi (Diupdate tiap ronde)
-	TotalVP      int     `gorm:"default:0" json:"total_vp"`      // Victory Points
-	TotalSpeaker float64 `gorm:"default:0" json:"total_speaker"` // Total Speaker Score
-	Rank         int     `gorm:"default:0" json:"rank"`
-	Wins         int     `gorm:"default:0" json:"wins"`
-	Losses       int     `gorm:"default:0" json:"losses"`
+	TotalVP      int `gorm:"default:0" json:"total_vp"`      // Victory Points
+	TotalSpeaker int `gorm:"default:0" json:"total_speaker"` // Total Speaker Score
+	Rank         int `gorm:"default:0" json:"rank"`
+	Wins         int `gorm:"default:0" json:"wins"`
+	Losses       int `gorm:"default:0" json:"losses"`
 }
 
 type Speaker struct {
 	gorm.Model
-	TeamID      uint    `json:"team_id"`
-	Team        Team    `json:"team" gorm:"references:ID"`
-	Name        string  `json:"name"`
-	TotalScore  float64 `json:"total_score"`
-	SpeakerRank int     `json:"speaker_rank"`
+	TeamID      uint   `json:"team_id"`
+	Team        Team   `json:"team" gorm:"references:ID"`
+	Name        string `json:"name"`
+	TotalScore  int    `json:"total_score"`
+	SpeakerRank int    `json:"speaker_rank"`
 }
 
 type Round struct {
@@ -148,6 +148,7 @@ type Round struct {
 	IsDrawPublished   bool    `json:"is_draw_published"`   // Draw visible to users
 	IsMotionPublished bool    `json:"is_motion_published"` // Motion visible to users
 	MotionImage       string  `json:"motion_image"`        // Optional image for motion
+	Status            string  `json:"status"`              // "in_progress", "completed"
 	Matches           []Match `json:"matches"`
 }
 
@@ -195,7 +196,7 @@ type Ballot struct {
 	MatchID   uint    `json:"match_id"`
 	SpeakerID uint    `json:"speaker_id"`
 	Speaker   Speaker `json:"speaker" gorm:"references:ID"`
-	Score     float64 `json:"score"` // AP (68-82), BP (60-80)
+	Score     int     `json:"score"` // AP (68-82), BP (60-80)
 
 	// Identitas Peran (Penting buat BP)
 	Position string `json:"position"` // "PM", "LO", "Member", "Whip"

@@ -70,6 +70,10 @@ func main() {
 		api.GET("/teams", controllers.GetTeams)    // <--- API untuk melihat daftar tim
 		api.POST("/teams", controllers.CreateTeam) // <--- API untuk mendaftarkan tim baru
 		api.DELETE("/teams/:id", controllers.DeleteTeam)
+		api.POST("/teams/import-csv", controllers.ImportTeamsCSV) // <--- Import dari CSV
+
+		// Speakers
+		api.GET("/speakers", controllers.GetSpeakers) // <--- API untuk melihat daftar speaker berdasarkan team_id
 
 		// Ronde & Match
 
@@ -83,22 +87,26 @@ func main() {
 		api.DELETE("/rounds/:id", controllers.DeleteRound)
 		api.PUT("/rounds/:id/publish-draw", controllers.PublishDraw)
 		api.PUT("/rounds/:id/publish-motion", controllers.PublishMotion)
+		api.PUT("/rounds/:id/status", controllers.UpdateRoundStatus)
 
 		// MATCHES
 		api.GET("/matches", controllers.GetMatches)
 		api.POST("/matches", controllers.CreateMatch)
 		api.PUT("/matches/:id/result", controllers.UpdateMatchResult)
+		api.PUT("/matches/:id/panel", controllers.AssignAdjudicatorPanel)
 		api.DELETE("/matches/:id", controllers.DeleteMatch)
 
 		// ADJUDICATORS
 		api.GET("/adjudicators", controllers.GetAdjudicators)
 		api.POST("/adjudicators", controllers.CreateAdjudicator)
 		api.DELETE("/adjudicators/:id", controllers.DeleteAdjudicator)
+		api.POST("/adjudicators/import-csv", controllers.ImportAdjudicatorsCSV) // <--- Import dari CSV
 
 		// ROOMS
 		api.GET("/rooms", controllers.GetRooms)
 		api.POST("/rooms", controllers.CreateRoom)
 		api.DELETE("/rooms/:id", controllers.DeleteRoom)
+		api.POST("/rooms/import-csv", controllers.ImportRoomsCSV) // <--- Import dari CSV
 
 		// STANDINGS (KLASEMEN)
 		api.GET("/standings", controllers.GetStandings) // Legacy support if needed

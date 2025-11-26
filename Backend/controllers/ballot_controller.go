@@ -12,6 +12,9 @@ type BallotInput struct {
 	MatchID     uint            `json:"match_id"`
 	Adjudicator string          `json:"adjudicator"`
 	Scores      []models.Ballot `json:"scores"`
+	Winner      string          `json:"winner"`    // "gov" or "opp" - explicit winner selection
+	GovReply    *int            `json:"gov_reply"` // Optional reply score
+	OppReply    *int            `json:"opp_reply"` // Optional reply score
 }
 
 func SubmitBallot(c *gin.Context) {
@@ -33,8 +36,11 @@ func SubmitBallot(c *gin.Context) {
 	}
 
 	// 1. Simpan Skor Individu
-	var totalGov float64 = 0
-	var totalOpp float64 = 0
+	var totalGov int = 0
+	var totalOpp int = 0
+
+	// Track speaker IDs and their scores for later update
+	speakerScores := make(map[uint]int)
 
 	for _, ballot := range input.Scores {
 		ballot.MatchID = input.MatchID
@@ -69,7 +75,7 @@ func SubmitBallot(c *gin.Context) {
 		}
 
 		// Debug log
-		fmt.Printf("Debug: TeamRole=%s, TeamID=%d, MatchID=%d\n", ballot.TeamRole, teamID, ballot.MatchID)
+		fmt.Printf("Debug: TeamRole=%s, TeamID=%d, MatchID=%d, SpeakerID=%d, Score=%d\n", ballot.TeamRole, teamID, ballot.MatchID, ballot.SpeakerID, ballot.Score)
 
 		// Validasi TeamID tidak boleh 0
 		if teamID == 0 {
@@ -80,6 +86,8 @@ func SubmitBallot(c *gin.Context) {
 
 		// Cari atau buat speaker baru jika belum ada
 		var speaker models.Speaker
+		var speakerID uint
+
 		if ballot.SpeakerID != 0 {
 			// Jika SpeakerID sudah ada, gunakan yang ada
 			if err := tx.First(&speaker, ballot.SpeakerID).Error; err != nil {
@@ -87,6 +95,7 @@ func SubmitBallot(c *gin.Context) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Speaker tidak ditemukan"})
 				return
 			}
+			speakerID = speaker.ID
 		} else if ballot.Speaker.Name != "" {
 			// Cari speaker berdasarkan nama dan tim
 			err := tx.Where("name = ? AND team_id = ?", ballot.Speaker.Name, teamID).First(&speaker).Error
@@ -102,17 +111,21 @@ func SubmitBallot(c *gin.Context) {
 					return
 				}
 			}
-			ballot.SpeakerID = speaker.ID
+			speakerID = speaker.ID
 		} else {
 			tx.Rollback()
 			c.JSON(http.StatusBadRequest, gin.H{"error": "SpeakerID atau Speaker.Name harus diisi"})
 			return
 		}
 
+		// Track speaker score for later update
+		speakerScores[speakerID] += ballot.Score
+		fmt.Printf("Debug: Tracked speaker %d with score %d (total: %d)\n", speakerID, ballot.Score, speakerScores[speakerID])
+
 		// Simpan ballot dengan SpeakerID yang valid
 		ballotToSave := models.Ballot{
 			MatchID:   ballot.MatchID,
-			SpeakerID: ballot.SpeakerID,
+			SpeakerID: speakerID,
 			Score:     ballot.Score,
 			Position:  ballot.Position,
 			IsReply:   ballot.IsReply,
@@ -141,10 +154,14 @@ func SubmitBallot(c *gin.Context) {
 	// match.Adjudicator = input.Adjudicator // Removed because Adjudicator is now a relation
 
 	// Logika Penentuan Pemenang
-	// Kalau Gov > Opp -> Gov Menang (WinnerID = GovTeamID)
-	// Kalau Opp > Gov -> Opp Menang
-	// Kalau Seri -> (Di debat jarang seri, biasanya juri dipaksa milih margin tipis)
-	if totalGov > totalOpp {
+	// Prioritas: Gunakan winner yang dipilih manual oleh adjudicator
+	// Kalau tidak ada, gunakan skor tertinggi
+	if input.Winner == "gov" {
+		match.WinnerID = match.GovTeamID
+	} else if input.Winner == "opp" {
+		match.WinnerID = match.OppTeamID
+	} else if totalGov > totalOpp {
+		// Fallback ke skor jika winner tidak diset
 		match.WinnerID = match.GovTeamID
 	} else {
 		match.WinnerID = match.OppTeamID
@@ -183,6 +200,25 @@ func SubmitBallot(c *gin.Context) {
 	if err := tx.Save(&match.OppTeam).Error; err != nil {
 		tx.Rollback()
 		return
+	}
+
+	// 4. Update Speaker Individual Scores (untuk Speaker Standings)
+	fmt.Printf("Debug: Updating %d speakers scores\n", len(speakerScores))
+	for speakerID, score := range speakerScores {
+		if speakerID != 0 {
+			var speaker models.Speaker
+			if err := tx.First(&speaker, speakerID).Error; err == nil {
+				oldScore := speaker.TotalScore
+				speaker.TotalScore += score
+				if err := tx.Save(&speaker).Error; err != nil {
+					fmt.Printf("Warning: Failed to update speaker %d score: %v\n", speakerID, err)
+				} else {
+					fmt.Printf("Debug: Updated speaker %d score from %d to %d\n", speakerID, oldScore, speaker.TotalScore)
+				}
+			} else {
+				fmt.Printf("Warning: Speaker %d not found: %v\n", speakerID, err)
+			}
+		}
 	}
 
 	// Selesai!
