@@ -3,26 +3,16 @@ package controllers
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/star_fj/eds-backend/models"
 	"gorm.io/gorm"
 )
 
-type AdjudicatorFeedback struct {
-	ID            uint      `json:"ID" gorm:"primaryKey"`
-	MatchID       uint      `json:"match_id"`
-	TournamentID  uint      `json:"tournament_id"`
-	AdjudicatorID uint      `json:"adjudicator_id"`
-	Rating        int       `json:"rating"`  // 1-5 stars
-	Comment       *string   `json:"comment"` // Optional comment
-	CreatedAt     time.Time `json:"created_at"`
-}
-
 // GetAdjudicatorFeedback - Get feedbacks with optional filters
 func GetAdjudicatorFeedback(c *gin.Context, db *gorm.DB) {
-	var feedbacks []AdjudicatorFeedback
-	query := db.Model(&AdjudicatorFeedback{})
+	var feedbacks []models.AdjudicatorFeedback
+	query := db.Model(&models.AdjudicatorFeedback{})
 
 	// Filter by adjudicator_id if provided
 	if adjID := c.Query("adjudicator_id"); adjID != "" {
@@ -49,21 +39,31 @@ func GetAdjudicatorFeedback(c *gin.Context, db *gorm.DB) {
 
 // CreateAdjudicatorFeedback - Create new feedback
 func CreateAdjudicatorFeedback(c *gin.Context, db *gorm.DB) {
-	var feedback AdjudicatorFeedback
+	var feedback models.AdjudicatorFeedback
 
 	if err := c.ShouldBindJSON(&feedback); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Check if feedback already exists for this match
+	// Validate team_role
+	if feedback.TeamRole != "gov" && feedback.TeamRole != "opp" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "team_role must be 'gov' or 'opp'"})
+		return
+	}
+
+	// Check if feedback already exists for this match AND team_role
 	var existingCount int64
-	db.Model(&AdjudicatorFeedback{}).
-		Where("match_id = ?", feedback.MatchID).
+	db.Model(&models.AdjudicatorFeedback{}).
+		Where("match_id = ? AND team_role = ?", feedback.MatchID, feedback.TeamRole).
 		Count(&existingCount)
 
 	if existingCount > 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Anda sudah memberikan feedback untuk pertandingan ini"})
+		teamName := "Government"
+		if feedback.TeamRole == "opp" {
+			teamName = "Opposition"
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": teamName + " sudah memberikan feedback untuk pertandingan ini"})
 		return
 	}
 
@@ -79,8 +79,6 @@ func CreateAdjudicatorFeedback(c *gin.Context, db *gorm.DB) {
 		return
 	}
 
-	feedback.CreatedAt = time.Now()
-
 	if err := db.Create(&feedback).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create feedback"})
 		return
@@ -89,7 +87,7 @@ func CreateAdjudicatorFeedback(c *gin.Context, db *gorm.DB) {
 	c.JSON(http.StatusCreated, gin.H{"data": feedback})
 }
 
-// CheckFeedbackExists - Check if feedback already exists for a match
+// CheckFeedbackExists - Check if feedback already exists for a match (per team_role)
 func CheckFeedbackExists(c *gin.Context, db *gorm.DB) {
 	matchID := c.Query("match_id")
 
@@ -98,18 +96,32 @@ func CheckFeedbackExists(c *gin.Context, db *gorm.DB) {
 		return
 	}
 
-	var count int64
-	db.Model(&AdjudicatorFeedback{}).
-		Where("match_id = ?", matchID).
-		Count(&count)
+	// Check gov feedback
+	var govCount int64
+	db.Model(&models.AdjudicatorFeedback{}).
+		Where("match_id = ? AND team_role = ?", matchID, "gov").
+		Count(&govCount)
+
+	// Check opp feedback
+	var oppCount int64
+	db.Model(&models.AdjudicatorFeedback{}).
+		Where("match_id = ? AND team_role = ?", matchID, "opp").
+		Count(&oppCount)
 
 	c.JSON(http.StatusOK, gin.H{
-		"exists": count > 0,
-		"message": func() string {
-			if count > 0 {
-				return "Anda sudah memberikan feedback untuk pertandingan ini"
+		"gov_submitted": govCount > 0,
+		"opp_submitted": oppCount > 0,
+		"gov_message": func() string {
+			if govCount > 0 {
+				return "Government sudah memberikan review"
 			}
-			return "Belum ada feedback"
+			return "Government belum memberikan review"
+		}(),
+		"opp_message": func() string {
+			if oppCount > 0 {
+				return "Opposition sudah memberikan review"
+			}
+			return "Opposition belum memberikan review"
 		}(),
 	})
 }
@@ -120,11 +132,11 @@ func GetFeedbackStats(c *gin.Context, db *gorm.DB) {
 
 	// Count total feedbacks
 	var totalCount int64
-	db.Model(&AdjudicatorFeedback{}).Where("adjudicator_id = ?", adjID).Count(&totalCount)
+	db.Model(&models.AdjudicatorFeedback{}).Where("adjudicator_id = ?", adjID).Count(&totalCount)
 
 	// Calculate average rating
 	var avgRating float64
-	db.Model(&AdjudicatorFeedback{}).
+	db.Model(&models.AdjudicatorFeedback{}).
 		Where("adjudicator_id = ?", adjID).
 		Select("COALESCE(AVG(rating), 0)").
 		Scan(&avgRating)
@@ -135,7 +147,7 @@ func GetFeedbackStats(c *gin.Context, db *gorm.DB) {
 		Count  int64 `json:"count"`
 	}
 	var distribution []RatingCount
-	db.Model(&AdjudicatorFeedback{}).
+	db.Model(&models.AdjudicatorFeedback{}).
 		Select("rating, COUNT(*) as count").
 		Where("adjudicator_id = ?", adjID).
 		Group("rating").
@@ -157,7 +169,7 @@ func DeleteAdjudicatorFeedback(c *gin.Context, db *gorm.DB) {
 		return
 	}
 
-	if err := db.Delete(&AdjudicatorFeedback{}, id).Error; err != nil {
+	if err := db.Delete(&models.AdjudicatorFeedback{}, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete feedback"})
 		return
 	}

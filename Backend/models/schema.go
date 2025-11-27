@@ -213,6 +213,7 @@ type AdjudicatorFeedback struct {
 	MatchID       uint    `json:"match_id"`
 	TournamentID  uint    `json:"tournament_id"`
 	AdjudicatorID uint    `json:"adjudicator_id"`
+	TeamRole      string  `json:"team_role"`                                       // "gov" or "opp" - which team is giving feedback
 	Rating        int     `json:"rating" gorm:"check:rating >= 1 AND rating <= 5"` // 1-5 stars
 	Comment       *string `json:"comment"`                                         // Optional comment
 }
