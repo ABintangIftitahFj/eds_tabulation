@@ -193,10 +193,13 @@ type Match struct {
 // Ballot: Lembar Skor Individu
 type Ballot struct {
 	gorm.Model
-	MatchID   uint    `json:"match_id"`
-	SpeakerID uint    `json:"speaker_id"`
-	Speaker   Speaker `json:"speaker" gorm:"references:ID"`
-	Score     int     `json:"score"` // AP (68-82), BP (60-80)
+	MatchID       uint        `json:"match_id"`
+	AdjudicatorID uint        `json:"adjudicator_id"`
+	Adjudicator   Adjudicator `json:"adjudicator" gorm:"references:ID"`
+	SpeakerID     uint        `json:"speaker_id"`
+	Speaker       Speaker     `json:"speaker" gorm:"references:ID"`
+	Score         int         `json:"score"`  // AP (68-82), BP (60-80)
+	Winner        string      `json:"winner"` // "gov" or "opp"
 
 	// Identitas Peran (Penting buat BP)
 	Position string `json:"position"` // "PM", "LO", "Member", "Whip"

@@ -112,6 +112,7 @@ func main() {
 		api.GET("/standings", controllers.GetStandings) // Legacy support if needed
 		api.GET("/standings/teams", controllers.GetStandings)
 		api.GET("/standings/speakers", controllers.GetSpeakerStandings)
+		api.POST("/standings/recalculate", controllers.RecalculateStandings)
 
 		// INSTITUTIONS
 		api.GET("/institutions", controllers.GetParticipatingInstitutions)

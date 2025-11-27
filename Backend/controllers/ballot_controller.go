@@ -9,12 +9,13 @@ import (
 )
 
 type BallotInput struct {
-	MatchID     uint            `json:"match_id"`
-	Adjudicator string          `json:"adjudicator"`
-	Scores      []models.Ballot `json:"scores"`
-	Winner      string          `json:"winner"`    // "gov" or "opp" - explicit winner selection
-	GovReply    *int            `json:"gov_reply"` // Optional reply score
-	OppReply    *int            `json:"opp_reply"` // Optional reply score
+	MatchID       uint            `json:"match_id"`
+	AdjudicatorID uint            `json:"adjudicator_id"`
+	Adjudicator   string          `json:"adjudicator"`
+	Scores        []models.Ballot `json:"scores"`
+	Winner        string          `json:"winner"`    // "gov" or "opp" - explicit winner selection
+	GovReply      *int            `json:"gov_reply"` // Optional reply score
+	OppReply      *int            `json:"opp_reply"` // Optional reply score
 }
 
 func SubmitBallot(c *gin.Context) {
@@ -33,6 +34,59 @@ func SubmitBallot(c *gin.Context) {
 		tx.Rollback()
 		c.JSON(http.StatusNotFound, gin.H{"error": "Match tidak ditemukan"})
 		return
+	}
+
+	// 0.5. Jika match sudah pernah di-ballot, revert stats lama dulu
+	if match.IsCompleted {
+		// Ambil semua ballot lama untuk match ini
+		var oldBallots []models.Ballot
+		tx.Where("match_id = ?", input.MatchID).Find(&oldBallots)
+
+		// Hitung total skor lama per tim
+		var oldGovScore, oldOppScore int
+		for _, ballot := range oldBallots {
+			if ballot.TeamRole == "gov" {
+				oldGovScore += ballot.Score
+			} else if ballot.TeamRole == "opp" {
+				oldOppScore += ballot.Score
+			}
+		}
+
+		// Revert speaker scores
+		for _, ballot := range oldBallots {
+			if ballot.SpeakerID != 0 {
+				var speaker models.Speaker
+				if err := tx.First(&speaker, ballot.SpeakerID).Error; err == nil {
+					speaker.TotalScore -= ballot.Score
+					tx.Save(&speaker)
+				}
+			}
+		}
+
+		// Revert team stats
+		if match.GovTeam.ID != 0 {
+			match.GovTeam.TotalSpeaker -= oldGovScore
+			if match.WinnerID != nil && *match.WinnerID == match.GovTeam.ID {
+				match.GovTeam.TotalVP -= 1
+				match.GovTeam.Wins -= 1
+			} else {
+				match.GovTeam.Losses -= 1
+			}
+			tx.Save(&match.GovTeam)
+		}
+		if match.OppTeam.ID != 0 {
+			match.OppTeam.TotalSpeaker -= oldOppScore
+			if match.WinnerID != nil && *match.WinnerID == match.OppTeam.ID {
+				match.OppTeam.TotalVP -= 1
+				match.OppTeam.Wins -= 1
+			} else {
+				match.OppTeam.Losses -= 1
+			}
+			tx.Save(&match.OppTeam)
+		}
+
+		// Hapus ballot lama
+		tx.Where("match_id = ?", input.MatchID).Delete(&models.Ballot{})
 	}
 
 	// 1. Simpan Skor Individu
@@ -124,12 +178,14 @@ func SubmitBallot(c *gin.Context) {
 
 		// Simpan ballot dengan SpeakerID yang valid
 		ballotToSave := models.Ballot{
-			MatchID:   ballot.MatchID,
-			SpeakerID: speakerID,
-			Score:     ballot.Score,
-			Position:  ballot.Position,
-			IsReply:   ballot.IsReply,
-			TeamRole:  ballot.TeamRole,
+			MatchID:       ballot.MatchID,
+			AdjudicatorID: input.AdjudicatorID,
+			SpeakerID:     speakerID,
+			Score:         ballot.Score,
+			Position:      ballot.Position,
+			IsReply:       ballot.IsReply,
+			TeamRole:      ballot.TeamRole,
+			Winner:        input.Winner,
 		}
 
 		if err := tx.Create(&ballotToSave).Error; err != nil {
@@ -239,7 +295,7 @@ func GetBallots(c *gin.Context) {
 
 	if matchID != "" {
 		// Query by specific match
-		if err := models.DB.Preload("Speaker").Where("match_id = ?", matchID).Find(&ballots).Error; err != nil {
+		if err := models.DB.Preload("Speaker").Preload("Adjudicator").Where("match_id = ?", matchID).Find(&ballots).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -257,7 +313,7 @@ func GetBallots(c *gin.Context) {
 			return
 		}
 
-		if err := models.DB.Preload("Speaker").Where("match_id IN ?", matchIDs).Find(&ballots).Error; err != nil {
+		if err := models.DB.Preload("Speaker").Preload("Adjudicator").Where("match_id IN ?", matchIDs).Find(&ballots).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

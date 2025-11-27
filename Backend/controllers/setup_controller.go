@@ -338,15 +338,35 @@ func CreateMatch(c *gin.Context) {
 
 // 10. LIHAT DAFTAR MATCH (Pairing)
 func GetMatches(c *gin.Context) {
-	roundID := c.Query("round_id") // Filter per ronde
+	roundID := c.Query("round_id")           // Filter per ronde
+	tournamentID := c.Query("tournament_id") // Filter per tournament
 	var matches []models.Match
 	query := models.DB.Preload("GovTeam").Preload("OppTeam").Preload("Round").Preload("Room").Preload("Adjudicator").Order("id asc")
+
 	if roundID != "" {
 		if _, err := strconv.Atoi(roundID); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid round_id"})
 			return
 		}
 		query = query.Where("round_id = ?", roundID)
+	}
+
+	// Filter by tournament_id (join through rounds)
+	if tournamentID != "" {
+		if _, err := strconv.Atoi(tournamentID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tournament_id"})
+			return
+		}
+		// Get all round IDs for this tournament first
+		var roundIDs []uint
+		models.DB.Model(&models.Round{}).Where("tournament_id = ?", tournamentID).Pluck("id", &roundIDs)
+		if len(roundIDs) > 0 {
+			query = query.Where("round_id IN ?", roundIDs)
+		} else {
+			// No rounds for this tournament, return empty
+			c.JSON(http.StatusOK, gin.H{"data": []models.Match{}})
+			return
+		}
 	}
 
 	teamID := c.Query("team_id")

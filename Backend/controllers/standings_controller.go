@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -140,4 +141,119 @@ func GetParticipatingInstitutions(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": institutions})
+}
+
+// POST /api/standings/recalculate?tournament_id=1
+// Menghitung ulang seluruh standings dari ballot yang ada
+func RecalculateStandings(c *gin.Context) {
+	tournamentID := c.Query("tournament_id")
+	if tournamentID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "tournament_id diperlukan"})
+		return
+	}
+
+	tx := models.DB.Begin()
+
+	// 1. Reset semua team stats untuk tournament ini
+	if err := tx.Model(&models.Team{}).
+		Where("tournament_id = ?", tournamentID).
+		Updates(map[string]interface{}{
+			"total_vp":      0,
+			"total_speaker": 0,
+			"wins":          0,
+			"losses":        0,
+		}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal reset team stats"})
+		return
+	}
+
+	// 2. Reset semua speaker scores untuk tournament ini
+	if err := tx.Exec(`
+		UPDATE speakers SET total_score = 0 
+		WHERE team_id IN (SELECT id FROM teams WHERE tournament_id = ?)
+	`, tournamentID).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal reset speaker scores"})
+		return
+	}
+
+	// 3. Ambil semua match yang sudah completed di tournament ini
+	var completedMatches []models.Match
+	if err := tx.Preload("GovTeam").Preload("OppTeam").
+		Joins("JOIN rounds ON matches.round_id = rounds.id").
+		Where("rounds.tournament_id = ? AND matches.is_completed = ?", tournamentID, true).
+		Find(&completedMatches).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil completed matches"})
+		return
+	}
+
+	fmt.Printf("Debug Recalculate: Found %d completed matches\n", len(completedMatches))
+
+	// 4. Untuk setiap match, hitung ulang stats dari ballot
+	for _, match := range completedMatches {
+		// Ambil ballots untuk match ini
+		var ballots []models.Ballot
+		tx.Where("match_id = ?", match.ID).Find(&ballots)
+
+		var totalGov, totalOpp int
+		speakerScores := make(map[uint]int)
+
+		for _, ballot := range ballots {
+			if ballot.TeamRole == "gov" {
+				totalGov += ballot.Score
+			} else if ballot.TeamRole == "opp" {
+				totalOpp += ballot.Score
+			}
+			if ballot.SpeakerID != 0 {
+				speakerScores[ballot.SpeakerID] += ballot.Score
+			}
+		}
+
+		// Update Gov Team
+		if match.GovTeamID != nil {
+			var govTeam models.Team
+			if err := tx.First(&govTeam, *match.GovTeamID).Error; err == nil {
+				govTeam.TotalSpeaker += totalGov
+				if match.WinnerID != nil && *match.WinnerID == *match.GovTeamID {
+					govTeam.TotalVP += 1
+					govTeam.Wins += 1
+				} else {
+					govTeam.Losses += 1
+				}
+				tx.Save(&govTeam)
+			}
+		}
+
+		// Update Opp Team
+		if match.OppTeamID != nil {
+			var oppTeam models.Team
+			if err := tx.First(&oppTeam, *match.OppTeamID).Error; err == nil {
+				oppTeam.TotalSpeaker += totalOpp
+				if match.WinnerID != nil && *match.WinnerID == *match.OppTeamID {
+					oppTeam.TotalVP += 1
+					oppTeam.Wins += 1
+				} else {
+					oppTeam.Losses += 1
+				}
+				tx.Save(&oppTeam)
+			}
+		}
+
+		// Update Speaker Scores
+		for speakerID, score := range speakerScores {
+			var speaker models.Speaker
+			if err := tx.First(&speaker, speakerID).Error; err == nil {
+				speaker.TotalScore += score
+				tx.Save(&speaker)
+			}
+		}
+	}
+
+	tx.Commit()
+	c.JSON(http.StatusOK, gin.H{
+		"message":           "Standings berhasil dihitung ulang",
+		"matches_processed": len(completedMatches),
+	})
 }
