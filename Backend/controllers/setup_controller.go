@@ -185,6 +185,17 @@ func GetTournaments(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": tournaments})
 }
 
+// 5b. GET SINGLE TOURNAMENT BY ID
+func GetTournament(c *gin.Context) {
+	id := c.Param("id")
+	var tournament models.Tournament
+	if err := models.DB.First(&tournament, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tournament not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": tournament})
+}
+
 // 6. LIHAT DAFTAR TIM (Baru)
 func GetTeams(c *gin.Context) {
 	tournamentID := c.Query("tournament_id")

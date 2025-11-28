@@ -3,7 +3,7 @@ package models
 import (
 	"fmt"
 	"log"
-	"os"
+	"os" // <--- Jangan lupa ini
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -12,9 +12,15 @@ import (
 var DB *gorm.DB
 
 func ConnectDatabase() {
+	// Ambil URL dari Environment Variable (Render)
 	dsn := os.Getenv("DATABASE_URL")
+
+	// Kalau kosong, berarti kita lagi di Laptop (Localhost)
 	if dsn == "" {
-		log.Fatal("DATABASE_URL is not set")
+		dsn = "host=localhost user=admin password=rahasia123 dbname=eds_upi port=5433 sslmode=disable TimeZone=Asia/Jakarta"
+		fmt.Println("💻 Mode: LOCALHOST (Docker)")
+	} else {
+		fmt.Println("☁️ Mode: CLOUD (Render)")
 	}
 
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -23,31 +29,13 @@ func ConnectDatabase() {
 		log.Fatal("❌ Gagal konek ke database!", err)
 	}
 
-	// AUTO MIGRATE: Daftarkan SEMUA Struct baru di sini
+	// Auto Migrate (Biar tabel otomatis dibuat di Supabase)
 	err = database.AutoMigrate(
-		&User{},
-		// Company Profile
-		&Member{},
-		&Article{},
-		&CompetitionHistory{}, // <-- Baru
-		&Achievement{},
-		// Tabulation System
-		&Tournament{},  // <-- Baru
-		&Adjudicator{}, // <-- Juri
-		&Room{},        // <-- Ruangan
-		&Team{},
-		&Speaker{},
-		&Round{},
-		&Match{},
-		&Ballot{},
-		&AdjudicatorFeedback{}, // <-- Feedback Juri
-		// Motion (opsional jika dipisah)
+		&User{}, &Member{}, &Article{}, &CompetitionHistory{}, &Achievement{},
+		&Tournament{}, &Team{}, &Speaker{}, &Round{}, &Match{}, &Ballot{},
+		&Adjudicator{}, &Room{}, &AdjudicatorFeedback{},
 	)
 
-	if err != nil {
-		log.Fatal("❌ Gagal migrasi tabel:", err)
-	}
-
 	DB = database
-	fmt.Println("✅ SUKSES: Database Updated dengan Schema Baru!")
+	fmt.Println("✅ SUKSES: Database Terhubung!")
 }

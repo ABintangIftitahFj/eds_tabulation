@@ -79,6 +79,7 @@ func main() {
 
 		// Turnamen
 		api.GET("/tournaments", controllers.GetTournaments)
+		api.GET("/tournaments/:id", controllers.GetTournament)
 		api.POST("/tournaments", controllers.CreateTournament)
 		api.PUT("/tournaments/:id", controllers.UpdateTournament)
 		api.DELETE("/tournaments/:id", controllers.DeleteTournament)
