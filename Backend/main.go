@@ -1,12 +1,20 @@
 package main
 
 import (
+	"log"
+	"os"
+
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"github.com/star_fj/eds-backend/controllers"
 	"github.com/star_fj/eds-backend/models"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using existing environment variables")
+	}
+
 	// 1. Nyalakan Koneksi Database (Auto Migrate tabel baru)
 	models.ConnectDatabase()
 
@@ -15,8 +23,15 @@ func main() {
 
 	// Tambahkan CORS Middleware agar Frontend bisa akses Backend
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
+		if allowedOrigins == "" {
+			allowedOrigins = "*"
+		}
+
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigins)
+		if allowedOrigins != "*" {
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
@@ -38,8 +53,10 @@ func main() {
 		// ==============================
 		// 🔐 AUTHENTICATION
 		// ==============================
-		api.POST("/register", controllers.Register) // Dev Only: Buat Admin
-		api.POST("/login", controllers.Login)       // Login Admin
+		if os.Getenv("ENABLE_DEV_REGISTER") == "true" {
+			api.POST("/register", controllers.Register) // Dev Only: Buat Admin
+		}
+		api.POST("/login", controllers.Login) // Login Admin
 
 		// ==============================
 		// 📰 FITUR COMPANY PROFILE
@@ -136,5 +153,12 @@ func main() {
 	}
 
 	// 4. Jalankan Server
-	r.Run(":8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	if err := r.Run(":" + port); err != nil {
+		log.Fatalf("failed to start server: %v", err)
+	}
 }

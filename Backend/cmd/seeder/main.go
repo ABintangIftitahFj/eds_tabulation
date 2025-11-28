@@ -6,17 +6,21 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/star_fj/eds-backend/models"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using existing environment variables")
+	}
+
 	// 1. Connect to Database
-	dsn := "host=localhost user=admin password=password123 dbname=eds_upi port=5433 sslmode=disable TimeZone=Asia/Jakarta"
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatal("❌ Failed to connect to database:", err)
+	models.ConnectDatabase()
+	db := models.DB
+	if db == nil {
+		log.Fatal("database connection is not initialized")
 	}
 	fmt.Println("✅ Connected to database")
 
@@ -114,7 +118,7 @@ func main() {
 		var govSpeakers []models.Speaker
 		db.Where("team_id = ?", govTeam.ID).Find(&govSpeakers)
 		for k, sp := range govSpeakers {
-			score := 75.0 + rand.Float64()*5 // 75-80
+			score := 75 + rand.Intn(6) // 75-80
 			if winner.ID == govTeam.ID {
 				score += 2 // Bonus for winning team
 			}
@@ -131,7 +135,7 @@ func main() {
 		var oppSpeakers []models.Speaker
 		db.Where("team_id = ?", oppTeam.ID).Find(&oppSpeakers)
 		for k, sp := range oppSpeakers {
-			score := 75.0 + rand.Float64()*5
+			score := 75 + rand.Intn(6)
 			if winner.ID == oppTeam.ID {
 				score += 2
 			}

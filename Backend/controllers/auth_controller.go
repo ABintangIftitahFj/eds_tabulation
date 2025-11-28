@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,7 +13,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var SecretKey = []byte("RAHASIA_NEGARA_EDS_UPI") // Kunci rahasia token
+var secretKey []byte
+
+func init() {
+	key := os.Getenv("JWT_SECRET")
+	if key == "" {
+		log.Fatal("JWT_SECRET is not set")
+	}
+	secretKey = []byte(key)
+}
 
 type LoginInput struct {
 	Username string `json:"username" binding:"required"`
@@ -82,7 +92,12 @@ func Login(c *gin.Context) {
 		"exp":  time.Now().Add(time.Hour * 24).Unix(), // Expired 24 jam
 	})
 
-	tokenString, _ := token.SignedString(SecretKey)
+	tokenString, err := token.SignedString(secretKey)
+	if err != nil {
+		log.Printf("failed to sign token: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat token"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"token": tokenString,

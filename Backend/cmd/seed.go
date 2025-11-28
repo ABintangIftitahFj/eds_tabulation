@@ -3,13 +3,19 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/star_fj/eds-backend/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using existing environment variables")
+	}
+
 	// 1. Konek Database
 	models.ConnectDatabase()
 
@@ -21,8 +27,15 @@ func main() {
 }
 
 func seedAdmin() {
-	username := "admin"
-	password := "admin123"
+	username := os.Getenv("SEED_ADMIN_USERNAME")
+	if username == "" {
+		username = "admin"
+	}
+
+	password := os.Getenv("SEED_ADMIN_PASSWORD")
+	if password == "" {
+		password = "admin123"
+	}
 
 	var existingUser models.User
 	if err := models.DB.Where("username = ?", username).First(&existingUser).Error; err == nil {
@@ -30,7 +43,10 @@ func seedAdmin() {
 		return
 	}
 
-	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		log.Fatal("❌ Gagal mengenkripsi password:", err)
+	}
 	user := models.User{
 		Username: username,
 		Password: string(hashedPassword),

@@ -499,7 +499,38 @@ func GetAdjudicators(c *gin.Context) {
 	if adjudicators == nil {
 		adjudicators = []models.Adjudicator{}
 	}
-	c.JSON(http.StatusOK, gin.H{"data": adjudicators})
+
+	// Create a response struct
+	type AdjudicatorWithStats struct {
+		models.Adjudicator
+		AvgRating     float64 `json:"avg_rating"`
+		MatchesJudged int64   `json:"matches_judged"`
+	}
+
+	var response []AdjudicatorWithStats
+
+	for _, adj := range adjudicators {
+		var avgRating float64
+		// Calculate average rating
+		models.DB.Model(&models.AdjudicatorFeedback{}).
+			Where("adjudicator_id = ?", adj.ID).
+			Select("COALESCE(AVG(rating), 0)").
+			Scan(&avgRating)
+
+		var matchesJudged int64
+		// Count completed matches judged
+		models.DB.Model(&models.Match{}).
+			Where("adjudicator_id = ? AND is_completed = ?", adj.ID, true).
+			Count(&matchesJudged)
+
+		response = append(response, AdjudicatorWithStats{
+			Adjudicator:   adj,
+			AvgRating:     avgRating,
+			MatchesJudged: matchesJudged,
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": response})
 }
 
 // 13. ROOM MANAGEMENT

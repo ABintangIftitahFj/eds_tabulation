@@ -1,0 +1,22 @@
+# Build artifacts
+*.exe
+*.dll
+*.test
+/dist
+/bin
+
+# Logs and temp
+*.log
+*.out
+*.tmp
+
+# Auto-generated database files
+uploads/
+!uploads/.gitkeep
+
+# Modules
+vendor/
+
+# Env files
+.env
+.env.*
