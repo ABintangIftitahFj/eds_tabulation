@@ -11,14 +11,14 @@ func TestEnvironmentSetup(t *testing.T) {
 		// Set test environment variables
 		os.Setenv("JWT_SECRET", "test-secret")
 		os.Setenv("DATABASE_URL", "sqlite://test.db")
-		
+
 		jwtSecret := os.Getenv("JWT_SECRET")
 		dbUrl := os.Getenv("DATABASE_URL")
-		
+
 		if jwtSecret != "test-secret" {
 			t.Errorf("Expected JWT_SECRET to be 'test-secret', got '%s'", jwtSecret)
 		}
-		
+
 		if dbUrl != "sqlite://test.db" {
 			t.Errorf("Expected DATABASE_URL to be 'sqlite://test.db', got '%s'", dbUrl)
 		}

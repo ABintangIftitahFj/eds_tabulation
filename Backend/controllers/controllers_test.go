@@ -104,7 +104,7 @@ func TestTournamentController(t *testing.T) {
 		var response map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &response)
 		data := response["data"].(map[string]interface{})
-		
+
 		assert.Equal(t, "Test Tournament", data["name"])
 		assert.Equal(t, "test-tournament", data["slug"])
 		assert.Equal(t, "asian", data["format"])
@@ -120,7 +120,7 @@ func TestTournamentController(t *testing.T) {
 		var response map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &response)
 		data := response["data"].([]interface{})
-		
+
 		assert.GreaterOrEqual(t, len(data), 0)
 	})
 }
@@ -155,7 +155,7 @@ func TestTeamController(t *testing.T) {
 		var response map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &response)
 		data := response["data"].(map[string]interface{})
-		
+
 		assert.Equal(t, "Test Team", data["name"])
 		assert.Equal(t, "Test University", data["institution"])
 	})
@@ -170,7 +170,7 @@ func TestTeamController(t *testing.T) {
 		var response map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &response)
 		data := response["data"].([]interface{})
-		
+
 		assert.GreaterOrEqual(t, len(data), 0)
 	})
 }
@@ -208,27 +208,27 @@ func TestBallotController(t *testing.T) {
 			"winner":         "gov",
 			"scores": []map[string]interface{}{
 				{
-					"speaker": map[string]string{"name": "Gov PM"},
-					"score":   85,
-					"position": "PM",
+					"speaker":   map[string]string{"name": "Gov PM"},
+					"score":     85,
+					"position":  "PM",
 					"team_role": "gov",
 				},
 				{
-					"speaker": map[string]string{"name": "Gov DPM"},
-					"score":   80,
-					"position": "DPM",
+					"speaker":   map[string]string{"name": "Gov DPM"},
+					"score":     80,
+					"position":  "DPM",
 					"team_role": "gov",
 				},
 				{
-					"speaker": map[string]string{"name": "Opp LO"},
-					"score":   78,
-					"position": "LO",
+					"speaker":   map[string]string{"name": "Opp LO"},
+					"score":     78,
+					"position":  "LO",
 					"team_role": "opp",
 				},
 				{
-					"speaker": map[string]string{"name": "Opp DLO"},
-					"score":   82,
-					"position": "DLO",
+					"speaker":   map[string]string{"name": "Opp DLO"},
+					"score":     82,
+					"position":  "DLO",
 					"team_role": "opp",
 				},
 			},
@@ -245,7 +245,7 @@ func TestBallotController(t *testing.T) {
 
 		var response map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &response)
-		
+
 		assert.Contains(t, response["message"], "Skor disimpan")
 		assert.Equal(t, float64(govTeam.ID), response["winner_id"])
 		assert.Equal(t, float64(165), response["total_gov"]) // 85 + 80
@@ -262,7 +262,7 @@ func TestBallotController(t *testing.T) {
 		var response map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &response)
 		data := response["data"].([]interface{})
-		
+
 		assert.Equal(t, 4, len(data)) // 4 speakers
 	})
 }
